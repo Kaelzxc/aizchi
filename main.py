@@ -1,0 +1,294 @@
+import discord
+from discord.ext import commands
+import logging
+from dotenv import load_dotenv
+import os
+import random
+import aiohttp
+import json
+from flask import Flask
+import threading
+
+# ========== FLASK APP FOR RENDER HOSTING ==========
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
+
+# Start Flask app in a separate thread
+flask_thread = threading.Thread(target=run_flask)
+flask_thread.start()
+
+# ========== DISCORD BOT SETUP ==========
+load_dotenv()
+token = os.getenv('DISCORD_TOKEN')
+GIPHY_API_KEY = os.getenv('GIPHY_API_KEY')  # Put your Giphy API key in .env
+
+handler = logging.FileHandler(filename='discord.log', encoding='utf-8', mode='w')
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
+
+bot = commands.Bot(command_prefix='!', intents=intents)
+
+valorant_role = "Valorant"
+tft_role = "Teamfight Tactics"
+lol_role = "League of Legends"
+
+CHI_STATUS_FILE = "CHI_status.json"
+
+# Load lil status from file on startup
+try:
+    with open(CHI_STATUS_FILE, "r") as f:
+        user_chi_status = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    user_chi_status = {}
+
+def save_chi_status():
+    with open(CHI_STATUS_FILE, "w") as f:
+        json.dump(user_chi_status, f)
+
+async def fetch_giphy_gif(search_term):
+    async with aiohttp.ClientSession() as session:
+        url = "https://api.giphy.com/v1/gifs/search"
+        params = {
+            "api_key": GIPHY_API_KEY,
+            "q": search_term,
+            "limit": 25,
+            "offset": 0,
+            "rating": "pg-13",
+            "lang": "en"
+        }
+        async with session.get(url, params=params) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                gifs = data.get("data")
+                if gifs:
+                    chosen = random.choice(gifs)
+                    return chosen["images"]["original"]["url"]
+    return None
+
+@bot.event
+async def on_ready():
+    print(f"We are ready to log in, {bot.user.name}")
+
+@bot.event
+async def on_member_join(member):
+    await member.send(f"Welcome to the server {member.name}")
+
+@bot.event
+async def on_message(message):
+    if message.author == bot.user:
+        return
+
+    content = message.content.lower()
+
+    # Auto-replies for greetings
+    if "goodmorning" in content or "good morning" in content:
+        await message.channel.send(f"Good morning, {message.author.mention}! ☀️")
+    elif "goodnight" in content or "good night" in content:
+        await message.channel.send(f"Good night, {message.author.mention}! 🌙")
+    elif "hello" in content:
+        await message.channel.send(f"Hello there, {message.author.mention}! 👋")
+
+    if "bobo" in content:
+        await message.delete()
+        await message.channel.send(f"{message.author.mention} - wag mo banggitin yan!")
+
+    await bot.process_commands(message)
+
+@bot.command()
+async def hello(ctx):
+    await ctx.send(f"Hello {ctx.author.mention}!")
+
+@bot.command()
+async def chi(ctx, *, status: str = None):
+    user_id = str(ctx.author.id)
+    if status is None:
+        current_status = user_chi_status.get(user_id)
+        if current_status:
+            await ctx.send(f"{ctx.author.mention} Chi is currently **{current_status}**!")
+        else:
+            await ctx.send(f"{ctx.author.mention} has no chi status set. Use `!Lil <status>` to set one!")
+    else:
+        user_chi_status[user_id] = status
+        save_chi_status()
+        await ctx.send(f"{ctx.author.mention}, your chi status has been set to **{status}**!")
+
+@bot.command()
+async def tiktok(ctx):
+    await ctx.send(f"https://www.tiktok.com/@chili.xlb {ctx.author.mention}!")
+
+@bot.command()
+async def sav(ctx):
+    await ctx.send(f"laging galet {ctx.author.mention}!")
+
+@bot.command()
+async def rank(ctx):
+    await ctx.send(f"Secret {ctx.author.mention}!")
+
+@bot.command()
+async def aiz(ctx):
+    await ctx.send(f"soft spoken clove main yan hehe sarap {ctx.author.mention}!")
+
+@bot.command()
+async def valorant(ctx):
+    role = discord.utils.get(ctx.guild.roles, name=valorant_role)
+    if role:
+        await ctx.author.add_roles(role)
+        await ctx.send(f"{ctx.author.mention} is now assigned to {valorant_role}!")
+    else:
+        await ctx.send("Role doesn't exist")
+
+@bot.command()
+async def tft(ctx):
+    role = discord.utils.get(ctx.guild.roles, name=tft_role)
+    if role:
+        await ctx.author.add_roles(role)
+        await ctx.send(f"{ctx.author.mention} is now assigned to {tft_role}!")
+    else:
+        await ctx.send("Role doesn't exist")
+
+@bot.command()
+async def lol(ctx):
+    role = discord.utils.get(ctx.guild.roles, name=lol_role)
+    if role:
+        await ctx.author.add_roles(role)
+        await ctx.send(f"{ctx.author.mention} is now assigned to {lol_role}!")
+    else:
+        await ctx.send("Role doesn't exist")
+
+@bot.command()
+async def chicommands(ctx):
+    await ctx.reply("!hello, !chi, !tiktok, !rank, !aiz, !kiss, !slap, !hug")
+
+@bot.command()
+async def poll(ctx, *, question):
+    target_channel_id = 1413647185488122000
+    target_channel = bot.get_channel(target_channel_id)
+
+    if not target_channel:
+        await ctx.send("❌ Couldn't find the target poll channel.")
+        return
+
+    embed = discord.Embed(
+        title="📢 **THOUGHTS NI CHI – CAST YOUR VOTE!**",
+        description=(
+            f"**⬇️ QUESTION:**\n"
+            f"__{question}__\n\n"
+            f"👍 = Agree\n"
+            f"👎 = Disagree\n"
+            f"🤔 = Neutral / Thinking\n\n"
+            f"🗳️ React below to vote!"
+        ),
+        color=random.choice([
+            discord.Color.green(),
+            discord.Color.blue(),
+            discord.Color.purple(),
+            discord.Color.gold()
+        ]),
+        timestamp=ctx.message.created_at
+    )
+
+    embed.set_thumbnail(url="https://i.pinimg.com/736x/0e/33/4b/0e334bce9c1ab54db627a2f86c170503.jpg")
+    embed.set_footer(
+        text="📝 Powered by aiz-chi bot • Made by aiz",
+        icon_url=ctx.guild.icon.url if ctx.guild.icon else discord.Embed.Empty
+    )
+
+    poll_message = await target_channel.send(embed=embed)
+    await poll_message.add_reaction("👍")
+    await poll_message.add_reaction("👎")
+    await poll_message.add_reaction("🤔")
+
+    await ctx.send(f"✅ Your poll has been posted in {target_channel.mention}!")
+
+
+@bot.command()
+async def tiktoklive(ctx):
+    target_channel_id = 1413666096782770217
+    channel = bot.get_channel(target_channel_id)
+
+    if channel is not None:
+        embed = discord.Embed(
+            title="🔴 hàn bǎo bāo is LIVE on TikTok!",
+            description=(
+                "🎥 **hàn bǎo bāo** just went live on TikTok!\n\n"
+                "✨ Come chill, vibe, and be part of the stream — it’s gonna be a fun time you won’t want to miss.\n\n"
+                "👉 **Tap below to join the live now:**\n"
+                "[📲 Watch the Stream](https://www.tiktok.com/@chili.xlb)"
+            ),
+            color=discord.Color.from_rgb(255, 0, 102),
+            timestamp=ctx.message.created_at
+        )
+
+        embed.set_thumbnail(url="https://p16-sign-sg.tiktokcdn.com/tos-alisg-avt-0068/a0c9bd2697efd324d8f2b8007258338c~tplv-tiktokx-cropcenter:1080:1080.jpeg?dr=14579&refresh_token=205ceaca&x-expires=1757293200&x-signature=0tqn%2BWcEOLC3GSaBMe72AtxaY%2Bo%3D&t=4d5b0474&ps=13740610&shp=a5d48078&shcp=81f88b70&idc=my2")
+        embed.set_image(url="https://i.pinimg.com/originals/39/22/16/3922169d403c173fb21242622dd1ead5.gif")
+
+        embed.set_footer(
+            text="🔗 Powered by aiz-chi bot • Brought to you by aiz",
+            icon_url=ctx.guild.icon.url if ctx.guild.icon else discord.Embed.Empty
+        )
+
+        await channel.send(content="@everyone", embed=embed)
+        await ctx.send("✅ Live alert sent!")
+    else:
+        await ctx.send("❌ Could not find the live announcement channel.")
+
+@bot.command()
+async def kiss(ctx, member: discord.Member = None):
+    if not member:
+        await ctx.send("You need to mention someone to kiss! 😳")
+        return
+    if member == ctx.author:
+        await ctx.send("Awww, self-love is important! 😘")
+        return
+    gif = await fetch_giphy_gif("anime kiss")
+    if not gif:
+        await ctx.send("Couldn't fetch a kiss GIF right now, try again later!")
+        return
+    embed = discord.Embed(description=f"💋 {ctx.author.mention} kisses {member.mention}!", color=discord.Color.pink())
+    embed.set_image(url=gif)
+    await ctx.send(embed=embed)
+
+@bot.command()
+async def slap(ctx, member: discord.Member = None):
+    if not member:
+        await ctx.send("Mention someone to slap! 😡")
+        return
+    if member == ctx.author:
+        await ctx.send("Why are you slapping yourself? 😢")
+        return
+    gif = await fetch_giphy_gif("anime slap")
+    if not gif:
+        await ctx.send("Couldn't fetch a slap GIF right now, try again later!")
+        return
+    embed = discord.Embed(description=f"👋 {ctx.author.mention} slaps {member.mention}!", color=discord.Color.red())
+    embed.set_image(url=gif)
+    await ctx.send(embed=embed)
+
+@bot.command()
+async def hug(ctx, member: discord.Member = None):
+    if not member:
+        await ctx.send("You gotta mention someone to hug! 🤗")
+        return
+    if member == ctx.author:
+        await ctx.send("Sending a virtual hug to yourself 🤗💖")
+        return
+    gif = await fetch_giphy_gif("anime hug")
+    if not gif:
+        await ctx.send("Couldn't fetch a hug GIF right now, try again later!")
+        return
+    embed = discord.Embed(description=f"🤗 {ctx.author.mention} gives {member.mention} a warm hug!", color=discord.Color.blue())
+    embed.set_image(url=gif)
+    await ctx.send(embed=embed)
+
+# Run bot
+bot.run(token, log_handler=handler, log_level=logging.DEBUG)
+
+
